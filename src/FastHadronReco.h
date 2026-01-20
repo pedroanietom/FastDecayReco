@@ -42,6 +42,7 @@ class TowerInfoContainerv4;
 class GlobalVertexMap;
 class TrkrClusterContainer;
 class PHG4TpcCylinderGeomContainer;
+class PHG4TpcGeomContainer;
 class Gl1Packet;
 
 class FastHadronReco : public SubsysReco
@@ -106,7 +107,7 @@ class FastHadronReco : public SubsysReco
   SvtxTrackMap* m_dst_trackmap {nullptr};
   Gl1Packet* gl1Packet {nullptr};
   TrkrClusterContainer* m_cluster_map {nullptr};
-  PHG4TpcCylinderGeomContainer* m_geom_container {nullptr};
+  PHG4TpcGeomContainer* m_geom_container {nullptr};
   GlobalVertexMap* m_global_vtxmap {nullptr};
   RawClusterContainer* m_cemc_clusters {nullptr};
   TowerInfoContainerv4* m_ihcal_towers {nullptr};

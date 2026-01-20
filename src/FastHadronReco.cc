@@ -39,6 +39,9 @@
 #include <g4detectors/PHG4TpcCylinderGeom.h>
 #include <g4detectors/PHG4TpcCylinderGeomContainer.h>
 
+#include <g4detectors/PHG4TpcGeom.h>
+#include <g4detectors/PHG4TpcGeomContainer.h>
+
 #include <ffamodules/CDBInterface.h>
 
 #include <fun4all/Fun4AllReturnCodes.h>
@@ -485,28 +488,39 @@ std::vector<unsigned int> FastHadronReco::getTrackStates(SvtxTrack *track)
       ++state_iter)
   {
     SvtxTrackState* tstate = state_iter->second;
-    auto stateckey = tstate->get_cluskey();
 
-    switch (TrkrDefs::getTrkrId(stateckey))
+    if (tstate->get_pathlength() != 0)  // The first track state is an extrapolation so has no cluster
     {
-      case TrkrDefs::mvtxId:
-        nmapsstate++;
-        break;
-      case TrkrDefs::inttId:
-        ninttstate++;
-        break;
-      case TrkrDefs::tpcId:
-        ntpcstate++;
-        break;
-      case TrkrDefs::micromegasId:
-        nmmsstate++;
-        break;
-        /*
-           default:
-           std::cout << PHWHERE << " unknown key " << stateckey << std::endl;
-           gSystem->Exit(1);
-           exit(1);
-           */
+
+      auto stateckey = tstate->get_cluskey();
+      uint8_t id = TrkrDefs::getTrkrId(stateckey);
+
+      switch (id)
+      {
+        case TrkrDefs::mvtxId:
+          nmapsstate++;
+          break;
+        case TrkrDefs::inttId:
+          ninttstate++;
+          break;
+        case TrkrDefs::tpcId:
+          ntpcstate++;
+          break;
+        case TrkrDefs::micromegasId:
+          nmmsstate++;
+          break;
+        default:
+          //std::cout << "Cluster key doesnt match a tracking system, could be related with projected track state to calorimeter system" << std::endl;
+          break;
+
+          /*
+             default:
+             std::cout << PHWHERE << " unknown key " << stateckey << std::endl;
+             gSystem->Exit(1);
+             exit(1);
+             */
+
+      }
     }
   }
   nstates.push_back(nmapsstate);
@@ -1079,67 +1093,158 @@ Acts::Vector3 FastHadronReco::calculateDca(SvtxTrack* track, const Acts::Vector3
   return outVals;
 }
 
+/*
+   float FastHadronReco::get_dEdx(SvtxTrack* track)
+   {
+
+   if(!m_cluster_map || !m_geom_container)
+   {
+   std::cout << "Can't continue in KFParticle_Tools::get_dEdx, returning -1" << std::endl;
+   return -1.0;
+   }
+
+   TrackSeed *tpcseed = track->get_tpc_seed();
+   std::vector<TrkrDefs::cluskey> clusterKeys;
+   clusterKeys.insert(clusterKeys.end(), tpcseed->begin_cluster_keys(), tpcseed->end_cluster_keys());
+   std::vector<float> dedxlist;
+   for (unsigned long cluster_key : clusterKeys)
+   {
+   unsigned int layer_local = TrkrDefs::getLayer(cluster_key);
+   if(TrkrDefs::getTrkrId(cluster_key) != TrkrDefs::TrkrId::tpcId)
+   {
+   continue;
+   }
+   TrkrCluster* cluster = m_cluster_map->findCluster(cluster_key);
+
+   float adc = cluster->getAdc();
+   PHG4TpcCylinderGeom* GeoLayer_local = m_geom_container->GetLayerCellGeom(layer_local);
+   float thick = GeoLayer_local->get_thickness();
+
+   float r = GeoLayer_local->get_radius();
+   float alpha = (r * r) / (2 * r * TMath::Abs(1.0 / tpcseed->get_qOverR()));
+   float beta = atan(tpcseed->get_slope());
+
+   float alphacorr = cos(alpha);
+   if(alphacorr<0||alphacorr>4)
+   {
+   alphacorr=4;
+   }
+
+   float betacorr = cos(beta);
+   if(betacorr<0||betacorr>4)
+   {
+   betacorr=4;
+   }
+
+   adc/=thick;
+   adc*=alphacorr;
+   adc*=betacorr;
+   dedxlist.push_back(adc);
+   sort(dedxlist.begin(), dedxlist.end());
+   }
+
+   int trunc_min = 0;
+   int trunc_max = (int)dedxlist.size()*0.7;
+   float sumdedx = 0;
+   int ndedx = 0;
+   for(int j = trunc_min; j<=trunc_max;j++)
+   {
+   sumdedx+=dedxlist.at(j);
+   ndedx++;
+   }
+
+   sumdedx/=ndedx;
+   return sumdedx;
+   }
+   */
+
 float FastHadronReco::get_dEdx(SvtxTrack* track)
 {
 
   if(!m_cluster_map || !m_geom_container)
   {
-    //   std::cout << "Can't continue in KFParticle_Tools::get_dEdx, returning -1" << std::endl;
+    std::cout << "Can't continue in KFParticle_Tools::get_dEdx, returning -1" << std::endl;
     return -1.0;
   }
 
   TrackSeed *tpcseed = track->get_tpc_seed();
+
+  float layerThicknesses[4] = {0.0, 0.0, 0.0, 0.0};
+  layerThicknesses[0] = m_geom_container->GetLayerCellGeom(7)->get_thickness();
+  layerThicknesses[1] = m_geom_container->GetLayerCellGeom(8)->get_thickness();
+  layerThicknesses[2] = m_geom_container->GetLayerCellGeom(27)->get_thickness();
+  layerThicknesses[3] = m_geom_container->GetLayerCellGeom(50)->get_thickness();
+
   std::vector<TrkrDefs::cluskey> clusterKeys;
   clusterKeys.insert(clusterKeys.end(), tpcseed->begin_cluster_keys(), tpcseed->end_cluster_keys());
   std::vector<float> dedxlist;
+
   for (unsigned long cluster_key : clusterKeys)
   {
+    auto detid = TrkrDefs::getTrkrId(cluster_key);
+    if (detid != TrkrDefs::TrkrId::tpcId)
+    {
+      continue;  // the micromegas clusters are added to the TPC seeds
+    }
     unsigned int layer_local = TrkrDefs::getLayer(cluster_key);
-    if(TrkrDefs::getTrkrId(cluster_key) != TrkrDefs::TrkrId::tpcId)
-    {
-      continue;
-    }
     TrkrCluster* cluster = m_cluster_map->findCluster(cluster_key);
-
     float adc = cluster->getAdc();
-    PHG4TpcCylinderGeom* GeoLayer_local = m_geom_container->GetLayerCellGeom(layer_local);
-    float thick = GeoLayer_local->get_thickness();
-
-    float r = GeoLayer_local->get_radius();
-    float alpha = (r * r) / (2 * r * TMath::Abs(1.0 / tpcseed->get_qOverR()));
-    float beta = atan(tpcseed->get_slope());
-
-    float alphacorr = cos(alpha);
-    if(alphacorr<0||alphacorr>4)
+    float thick = 0;
+    if (layer_local < 23)
     {
-      alphacorr=4;
+      if (layer_local % 2 == 0)
+      {
+        thick = layerThicknesses[1];
+      }
+      else
+      {
+        thick = layerThicknesses[0];
+      }
     }
-
-    float betacorr = cos(beta);
-    if(betacorr<0||betacorr>4)
+    else if (layer_local < 39)
     {
-      betacorr=4;
+      thick = layerThicknesses[2];
     }
-
-    adc/=thick;
-    adc*=alphacorr;
-    adc*=betacorr;
+    else
+    {
+      thick = layerThicknesses[3];
+    }
+    auto cglob = _tGeometry->getGlobalPosition(cluster_key, cluster);
+    float r = std::sqrt(cglob(0) * cglob(0) + cglob(1) * cglob(1));
+    float alpha = (r * r) / (2 * r * std::abs(1.0 / tpcseed->get_qOverR()));
+    float beta = std::atan(tpcseed->get_slope());
+    float alphacorr = std::cos(alpha);
+    if (alphacorr < 0 || alphacorr > 4)
+    {
+      alphacorr = 4;
+    }
+    float betacorr = std::cos(beta);
+    if (betacorr < 0 || betacorr > 4)
+    {
+      betacorr = 4;
+    }
+    adc /= thick;
+    adc *= alphacorr;
+    adc *= betacorr;
     dedxlist.push_back(adc);
     sort(dedxlist.begin(), dedxlist.end());
   }
-
   int trunc_min = 0;
-  int trunc_max = (int)dedxlist.size()*0.7;
+  if (dedxlist.empty())
+  {
+    return std::numeric_limits<float>::quiet_NaN();
+  }
+  int trunc_max = (int) dedxlist.size() * 0.7;
   float sumdedx = 0;
   int ndedx = 0;
-  for(int j = trunc_min; j<=trunc_max;j++)
+  for (int j = trunc_min; j <= trunc_max; j++)
   {
-    sumdedx+=dedxlist.at(j);
+    sumdedx += dedxlist.at(j);
     ndedx++;
   }
-
-  sumdedx/=ndedx;
+  sumdedx /= ndedx;
   return sumdedx;
+
 }
 
 int FastHadronReco::get_PID(float& mass, int charge)
@@ -1216,16 +1321,21 @@ double FastHadronReco::get_dEdx_fitValue(float& qmomentum, int& PID)
 
 int FastHadronReco::InitRun(PHCompositeNode* topNode)
 {
+  std::cout << "L=1" << std::endl; 
   const char* cfilepath = filepath.c_str();
+  std::cout << "L=2" << std::endl;
   fout = new TFile(cfilepath, "recreate");
+  std::cout << "L=3" << std::endl;
   ntp_reco_info = new TNtuple("ntp_reco_info", "decay_pairs", "id1:crossing1:x1:y1:z1:px1:py1:pz1:decaymassA:dEdx1:matching1:dca3dxy1:dca3dz1:phi1:pca_rel1_x:pca_rel1_y:pca_rel1_z:eta1:charge1:tpcClusters_1:id2:crossing2:x2:y2:z2:px2:py2:pz2:decaymassB:dEdx2:matching2:dca3dxy2:dca3dz2:phi2:pca_rel2_x:pca_rel2_y:pca_rel2_z:eta2:charge2:tpcClusters_2:vertex_x:vertex_y:vertex_z:pair_dca:invariant_mass:invariant_pt:invariantPhi:pathlength_x:pathlength_y:pathlength_z:pathlength:rapidity:pseudorapidity:projected_pos1_x:projected_pos1_y:projected_pos1_z:projected_pos2_x:projected_pos2_y:projected_pos2_z:projected_mom1_x:projected_mom1_y:projected_mom1_z:projected_mom2_x:projected_mom2_y:projected_mom2_z:projected_pca_rel1_x:projected_pca_rel1_y:projected_pca_rel1_z:projected_pca_rel2_x:projected_pca_rel2_y:projected_pca_rel2_z:projected_pair_dca:projected_pathlength_x:projected_pathlength_y:projected_pathlength_z:projected_pathlength:quality1:quality2:cosThetaReco:track1_silicon_clusters:track2_silicon_clusters:track1_mvtx_clusters:track1_mvtx_states:track1_intt_clusters:track1_intt_states:track2_mvtx_clusters:track2_mvtx_states:track2_intt_clusters:track2_intt_states:icomb:proj_cemc_phi1:proj_cemc_eta1:cemc_phi1:cemc_eta1:cemc_z1:cemc_ecore1:proj_cemc_phi2:proj_cemc_eta2:cemc_phi2:cemc_eta2:cemc_z2:cemc_ecore2:proj_ihcal_phi1:proj_ihcal_eta1:ihcal_phi1:ihcal_eta1:ihcal_e3x3_1:proj_ihcal_phi2:proj_ihcal_eta2:ihcal_phi2:ihcal_eta2:ihcal_e3x3_2:proj_ohcal_phi1:proj_ohcal_eta1:ohcal_phi1:ohcal_eta1:ohcal_e3x3_1:proj_ohcal_phi2:proj_ohcal_eta2:ohcal_phi2:ohcal_eta2:ohcal_e3x3_2:Zvtx:runNumber:eventNumber:trackid1:trackid2:run:segment:mb10:mb12:photon4:photon5:mbphoton3:mbphoton4:mbphoton5");
-
+  std::cout << "L=4" << std::endl;
   getNodes(topNode);
 
+  std::cout << "L=5" << std::endl;
   recomass = new TH1D("recomass", "recomass", 1000, 0.0, 1);  // root histogram arguments: name,title,bins,minvalx,maxvalx
 
   h_trigger = new TH1D("h_trigger","h_trigger", 41, -0.5, 40.5);
 
+  std::cout << "L=6" << std::endl;
   //Add new track map to save selected tracks
   if (m_save_tracks)
   {
@@ -1325,7 +1435,7 @@ int FastHadronReco::getNodes(PHCompositeNode* topNode)
 
   m_cluster_map = findNode::getClass<TrkrClusterContainer>(topNode, "TRKR_CLUSTER");
 
-  m_geom_container = findNode::getClass<PHG4TpcCylinderGeomContainer>(topNode, "CYLINDERCELLGEOM_SVTX");
+  m_geom_container = findNode::getClass<PHG4TpcGeomContainer>(topNode, "TPCGEOMCONTAINER");
 
   gl1Packet = findNode::getClass<Gl1Packet>(topNode, "GL1RAWHIT");
   if(!gl1Packet) {
