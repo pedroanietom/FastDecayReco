@@ -15,6 +15,7 @@ The macro was:
 - Calorimeter projection
 
 ---
+```cpp
 ## For K⁰ₛ → π⁺π⁻
 
 fastreco->setPhotonConv(false);
