@@ -36,8 +36,7 @@ src/
   FastHadronReco.h
 
 condor/
-  TrackSeeding/
-    submit scripts, job wrappers, and configuration files
+  submit scripts, job wrappers, and configuration files
 
 analysis/
   ROOT macros and analysis scripts
