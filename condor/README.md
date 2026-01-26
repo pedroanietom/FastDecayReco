@@ -1,6 +1,6 @@
 ## Fun4All TrackSeeding Macro
 
-This repository contains a **Fun4All macro** that runs **TrackSeeding over the cluster DST** in sPHENIX, with optional **KFParticle reconstruction** and **FastHadronReco** support.
+This repository contains a **Fun4All macro** that runs **TrackSeeding over the cluster DST** in sPHENIX, with **FastHadronReco** module.
 
 ---
 ```cpp
