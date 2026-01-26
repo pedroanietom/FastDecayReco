@@ -1,18 +1,6 @@
-# Fun4All TrackSeeding Macro
+## Fun4All TrackSeeding Macro
 
 This repository contains a **Fun4All macro** that runs **TrackSeeding over the cluster DST** in sPHENIX, with optional **KFParticle reconstruction** and **FastHadronReco** support.
-
-The macro was:
-- **Originally developed by Anthony Frawley** as a TrackSeeding and tracking diagnostics example
-- **Later modified and extended by Pedro Nieto** to support:
-  - **K⁰ₛ (K-short) reconstruction**
-  - **ϕ (phi) meson reconstruction**
-  - **Photon conversion (γ → e⁺e⁻)**
----
-## Main Features
-
-- **FastHadronReco** for fast secondary-vertex finding
-- Calorimeter projection
 
 ---
 ```cpp
