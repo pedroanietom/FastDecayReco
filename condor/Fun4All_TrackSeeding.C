@@ -64,7 +64,7 @@
 #include <caloreco/RawClusterDeadHotMask.h>
 #include <caloreco/RawClusterPositionCorrection.h>
 #include <caloreco/TowerInfoDeadHotMask.h>
-#include <fastreco/FastDecayReco.h>
+#include <fastdecayreco/FastDecayReco.h>
 #include <Calo_Calib.C>
 
 #include <stdio.h>
@@ -127,18 +127,20 @@ void Fun4All_TrackSeeding(
             << " vdrift: " << G4TPC::tpc_drift_velocity_reco
             << std::endl;
 
+  
   std::string outDir = "myKShortReco/";
   std::string outputFileName = "outputKFParticle_" + std::to_string(runnumber) + "_" + std::to_string(segment) + ".root";
   std::string outputRecoDir = outDir + "inReconstruction/";
   std::string outputRecoFile = outputRecoDir + outputFileName;
-/*
+
+  
   if(doKFParticle){
     std::string makeMainDirectory = "mkdir -p " + outDir;
     system(makeMainDirectory.c_str());
     std::string makeDirectory = "mkdir -p " + outputRecoDir;
     system(makeDirectory.c_str());
   }
-*/
+
   // distortion calibration mode
   /*
    * set to true to enable residuals in the TPC with
@@ -298,7 +300,7 @@ void Fun4All_TrackSeeding(
   TString ananame = theOutfileheader + "_ana.root";
   std::string anaOutputFileName(ananame.Data());
   */
-  
+  /*
   std::string residstring = theOutfile + "_resid.root";
 
   auto *resid = new TrackResiduals("TrackResiduals");
@@ -320,19 +322,21 @@ void Fun4All_TrackSeeding(
   resid->convertSeeds(G4TRACKING::convert_seeds_to_svtxtracks);
   resid->Verbosity(0);
   se->registerSubsystem(resid);
-  
+  */
 
   std::string faststring = outfilename + "_fastreco.root";
   auto fastreco = new FastDecayReco();
   fastreco->Verbosity(0);
+  fastreco->setMC(false);
   fastreco->setTrackQualityCut(1000);
   fastreco->setPtCut(0.2);
   fastreco->setPairDCACut(5.0);
-  fastreco->setRequireMVTX(false);
+  fastreco->setRequireMVTX(true);
   fastreco->setTrackDCACut(0.0);  // requires fabs(dca) > this
-  fastreco->setPhotonConv(true); // if this is set as true then set DecayMass1 and DecayMass2 as the electron mass
-  fastreco->setDecayMass1(0.000511);    //(muons decaymass = 0.1057) (pions = 0.13957) (electron = 0.000511) (kaons = 0.49367)
-  fastreco->setDecayMass2(0.000511);  //(muons decaymass = 0.1057) (pions = 0.13957) (electron = 0.000511) (kaons = 0.49367)
+  fastreco->setTrackCaloMatching(true); // if this is set as true then crossing == 0
+  fastreco->setPhotonConv(false); // if this is set as true then set DecayMass1 and DecayMass2 as the electron mass
+  fastreco->setDecayMass1(0.13957);    //(muons decaymass = 0.1057) (pions = 0.13957) (electron = 0.000511) (kaons = 0.49367)
+  fastreco->setDecayMass2(0.13957);  //(muons decaymass = 0.1057) (pions = 0.13957) (electron = 0.000511) (kaons = 0.49367)
   fastreco->setRunNumber(runnumber);
   fastreco->setSegment(segment);
   fastreco->set_output_file(faststring);
