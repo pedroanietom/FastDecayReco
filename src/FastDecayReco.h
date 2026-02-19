@@ -8,6 +8,7 @@
 #include <trackbase/TrkrDefs.h>
 
 #include <globalvertex/SvtxVertexMap.h>
+#include <globalvertex/MbdVertexMap.h>
 #include <ffarawobjects/Gl1Packetv1.h>
 
 #include <trackbase_historic/SvtxTrackMap.h>
@@ -39,7 +40,9 @@ class SvtxVertexMap;
 class RawCluster;
 class RawClusterContainer;
 class TowerInfoContainerv4;
-class GlobalVertexMap;
+class TowerInfoContainerv2;
+class GlobalVertexMapv1;
+class MbdOutV2;
 class TrkrClusterContainer;
 class PHG4TpcCylinderGeomContainer;
 class PHG4TpcGeomContainer;
@@ -67,6 +70,8 @@ class FastDecayReco : public SubsysReco
   void setRunNumber(int runnumber){ _runnumber = runnumber;}
   void setSegment(int segment){ _segment = segment;}
   void setPhotonConv(bool photonconv){ _photonconv = photonconv;}
+  void setMC(bool MC){ _MC = MC;}
+  void setTrackCaloMatching(bool TrackCaloMatching){ _TrackCaloMatching = TrackCaloMatching;}
   void set_output_file(const std::string& outputfile) { filepath = outputfile; }
   void save_tracks(bool save = true) { m_save_tracks = save; }
 
@@ -80,7 +85,7 @@ class FastDecayReco : public SubsysReco
 
   RawCluster* MatchClusterCEMC(SvtxTrackState* trackstate, RawClusterContainer* cemc_clusters, float& track_phi, float& track_eta, double Zvtx);
 
-  double Get_CAL_e3x3(SvtxTrackState* trackstate, TowerInfoContainerv4* m_ohcal_towers, float& track_eta, float& track_phi, float& hcal_eta, float& hcal_phi, double Zvtx, int what);
+  double Get_CAL_e3x3(SvtxTrackState* trackstate, TowerInfoContainerv2* m_ohcal_towers, float& track_eta, float& track_phi, float& hcal_eta, float& hcal_phi, double Zvtx, int what);
 
   // void findPcaTwoTracks(SvtxTrack *track1, SvtxTrack *track2, Acts::Vector3& pca1, Acts::Vector3& pca2, double& dca);
   void findPcaTwoTracks(float& decaymassA, float& decaymassB, const Acts::Vector3& pos1, const Acts::Vector3& pos2, Acts::Vector3 mom1, Acts::Vector3 mom2, Acts::Vector3& pca1, Acts::Vector3& pca2, double& dca) const;
@@ -101,19 +106,22 @@ class FastDecayReco : public SubsysReco
   static std::vector<unsigned int> getTrackStates(SvtxTrack *track);
   
   TNtuple* ntp_reco_info {nullptr};
+  TNtuple* ntp_vertex {nullptr};
   ActsGeometry* _tGeometry {nullptr};
   SvtxTrackMap* m_svtxTrackMap {nullptr};
   SvtxVertexMap* m_vertexMap {nullptr};
+  MbdVertexMap* m_mbdvertexmap {nullptr};
+  GlobalVertexMapv1* m_global_vtxmap {nullptr};
+  MbdOutV2* mbdout{nullptr};
   SvtxTrackMap* m_dst_trackmap {nullptr};
   Gl1Packet* gl1Packet {nullptr};
   TrkrClusterContainer* m_cluster_map {nullptr};
   PHG4TpcGeomContainer* m_geom_container {nullptr};
-  GlobalVertexMap* m_global_vtxmap {nullptr};
   RawClusterContainer* m_cemc_clusters {nullptr};
-  TowerInfoContainerv4* m_ihcal_towers {nullptr};
-  TowerInfoContainerv4* m_ohcal_towers {nullptr};
-  TowerInfoContainerv4* _geomIH {nullptr};
-  TowerInfoContainerv4* _geomOH {nullptr};
+  TowerInfoContainerv2* m_ihcal_towers {nullptr};
+  TowerInfoContainerv2* m_ohcal_towers {nullptr};
+  TowerInfoContainerv2* _geomIH {nullptr};
+  TowerInfoContainerv2* _geomOH {nullptr};
 
   TF1 *f_pion_plus{nullptr};
   TF1 *f_kaon_plus{nullptr};
@@ -131,6 +139,8 @@ class FastDecayReco : public SubsysReco
   float decaymass2 {0.13957}; // pions as default
   bool _require_mvtx {true};
   bool _photonconv {false};
+  bool _TrackCaloMatching {false};
+  bool _MC {false};
   double _qual_cut {1000.0};
   double pair_dca_cut {0.05};  // kshort relative cut 500 microns
   double track_dca_cut {0.01};

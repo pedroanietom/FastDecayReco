@@ -26,13 +26,18 @@
 #include <calobase/RawTowerGeomContainer_Cylinderv1.h>
 #include <calobase/RawTowerGeomContainer.h>
 #include <calobase/TowerInfoContainerv4.h>
+#include <calobase/TowerInfoContainerv2.h>
 #include <calobase/TowerInfoDefs.h>
 
-#include <globalvertex/MbdVertexMap.h>
-#include <globalvertex/GlobalVertexMap.h>
-#include <globalvertex/GlobalVertex.h>
+#include <mbd/MbdOutV2.h>
+
+#include <globalvertex/GlobalVertexMapv1.h>
+#include <globalvertex/GlobalVertexv3.h>
 #include <globalvertex/SvtxVertex.h>
 #include <globalvertex/SvtxVertexMap.h>
+#include <globalvertex/MbdVertex.h>
+#include <globalvertex/MbdVertexMap.h>
+#include <globalvertex/MbdVertexMapv1.h>
 
 #include <trackbase/TrkrClusterContainer.h>
 #include <trackbase/TrkrCluster.h>
@@ -75,7 +80,9 @@ using Trajectory = ActsExamples::Trajectories;
 int FastDecayReco::process_event(PHCompositeNode* topNode)
 {
 
+
   EventHeader* evtHeader = findNode::getClass<EventHeader>(topNode, "EventHeader");
+
 
   int m_runNumber;
   int m_evtNumber;
@@ -89,20 +96,52 @@ int FastDecayReco::process_event(PHCompositeNode* topNode)
     m_runNumber = m_evtNumber = -1;
   }
 
-  // Global Vertex information
-  double Zvtx = -999.;
+  double init = -999.;
 
+  // Svtx vertex information
+
+  float svtx_x = init, svtx_y = init, svtx_z = init;
+  if(m_vertexMap && !m_vertexMap->empty())
+  {
+    // simplest: first vertex in the map
+    auto it = m_vertexMap->begin();
+    auto *v = it->second;
+    if(v)
+    {
+      svtx_x = v->get_x();
+      svtx_y = v->get_y();
+      svtx_z = v->get_z();
+    }
+  }
+
+  // MBD verte information
+
+  float mbd_x = init, mbd_y = init, mbd_z = init;
+  if(m_mbdvertexmap && !m_mbdvertexmap->empty())
+  {
+    auto it = m_mbdvertexmap->begin();
+    auto *v = it->second;
+    if(v)
+    {
+      mbd_x = v->get_x();
+      mbd_y = v->get_y();
+      mbd_z = v->get_z();
+    }
+  }
+
+  // Global Vertex information
+  float g_x = init, g_y = init, g_z = init;
   for (GlobalVertexMap::Iter iter = m_global_vtxmap->begin(); iter != m_global_vtxmap->end(); ++iter)  {
     GlobalVertex *vtx = iter->second;
-    //std::cout << "Vertex ID: " << vtx->get_id() << ", Z: " << vtx->get_z() << std::endl;
-    Zvtx = vtx->get_z();
-  }
-  if(Verbosity() > 0){
-    std::cout << "Global vertex Z = " << Zvtx << " " << std::endl;
-  }
-  if(fabs(Zvtx)>30.){
-    std::cout << "No vertex" << std::endl;
-    return Fun4AllReturnCodes::ABORTEVENT;
+
+    if (vtx->get_id() == std::numeric_limits<unsigned int>::max()) continue;
+    if( Verbosity() > 0 ){
+      std::cout << "Vertex ID: " << vtx->get_id() << ", Z: " << vtx->get_z() << std::endl;
+    }
+    g_x = vtx->get_x();
+    g_y = vtx->get_y();
+    g_z = vtx->get_z();
+    
   }
 
   // Trigger information
@@ -115,60 +154,114 @@ int FastDecayReco::process_event(PHCompositeNode* topNode)
   bool isMBPhoton4 = false;
   bool isMBPhoton5 = false;
 
-  if(gl1Packet)
-  {
-    auto scaled_vector = gl1Packet->getScaledVector();
-    for(int i = 0; i < 40; i++)
+  if(!_MC){
+    if(gl1Packet)
     {
-      if((scaled_vector & (int)std::pow(2,i)) != 0)
+      auto scaled_vector = gl1Packet->getScaledVector();
+      for(int i = 0; i < 40; i++)
       {
-        _triggers.push_back(i);
+        if((scaled_vector & (int)std::pow(2,i)) != 0)
+        {
+          _triggers.push_back(i);
+        }
+      }
+    }
+    else
+    {
+      return Fun4AllReturnCodes::ABORTEVENT;
+    }
+
+    for (int trigger : _triggers)
+    {
+      if (trigger == 10)
+      {
+        isMB10 = true;
+        h_trigger->Fill(10);
+      }
+      else if(trigger == 12)
+      {
+        isMB12 = true;
+        h_trigger->Fill(12);
+      }
+      else if (trigger == 30)
+      {
+        isPhoton4 = true;
+        h_trigger->Fill(30);
+      }
+      else if (trigger == 31)
+      {
+        isPhoton5 = true;
+        h_trigger->Fill(31);
+      }
+      else if (trigger == 36)
+      {
+        isMBPhoton3 = true;
+        h_trigger->Fill(36);
+      }
+      else if (trigger == 37)
+      {
+        isMBPhoton4 = true;
+        h_trigger->Fill(37);
+      }
+      else if (trigger == 38)
+      {
+        isMBPhoton5 = true;
+        h_trigger->Fill(38);
       }
     }
   }
-  else
-  {
-    return Fun4AllReturnCodes::ABORTEVENT;
-  }
 
-  for (int trigger : _triggers)
-  {
-    if (trigger == 10)
-    {
+  if(_MC){
+    short nhits_S = mbdout->get_npmt(0);
+    short nhits_N = mbdout->get_npmt(1);
+    
+    std::cout << "Hits south " << nhits_S << " hits north " << nhits_N << std::endl;
+
+    if(nhits_S >= 1 && nhits_N >= 1){
       isMB10 = true;
       h_trigger->Fill(10);
-    }
-    else if(trigger == 12)
-    {
+    } else if(nhits_S >= 1 && nhits_N >= 1 && fabs(g_z)<10.){
       isMB12 = true;
       h_trigger->Fill(12);
     }
-    else if (trigger == 30)
-    {
-      isPhoton4 = true;
-      h_trigger->Fill(30);
-    }
-    else if (trigger == 31)
-    {
-      isPhoton5 = true;
-      h_trigger->Fill(31);
-    }
-    else if (trigger == 36)
-    {
-      isMBPhoton3 = true;
-      h_trigger->Fill(36);
-    }
-    else if (trigger == 37)
-    {
-      isMBPhoton4 = true;
-      h_trigger->Fill(37);
-    }
-    else if (trigger == 38)
-    {
-      isMBPhoton5 = true;
-      h_trigger->Fill(38);
+  }
+
+  if(!_MC){
+    if (!isMB12) {
+      return Fun4AllReturnCodes::ABORTEVENT;   // or EVENT_OK (see note below)
     }
   }
+
+  float svtx_mbd12_x = init, svtx_mbd12_y = init, svtx_mbd12_z = init;
+  float mbd_mbd12_x  = init, mbd_mbd12_y  = init, mbd_mbd12_z  = init;
+  float g_mbd12_x    = init, g_mbd12_y    = init, g_mbd12_z    = init;
+
+  if(!_MC && isMB12)
+  {
+    svtx_mbd12_x = svtx_x; svtx_mbd12_y = svtx_y; svtx_mbd12_z = svtx_z;
+    mbd_mbd12_x  = mbd_x;  mbd_mbd12_y  = mbd_y;  mbd_mbd12_z  = mbd_z;
+    g_mbd12_x    = g_x;    g_mbd12_y    = g_y;    g_mbd12_z    = g_z;
+  }
+
+  float vtx_row[] = {
+    svtx_x, svtx_y, svtx_z,
+    svtx_mbd12_x, svtx_mbd12_y, svtx_mbd12_z,
+    mbd_x, mbd_y, mbd_z,
+    mbd_mbd12_x, mbd_mbd12_y, mbd_mbd12_z,
+    g_x, g_y, g_z,
+    g_mbd12_x, g_mbd12_y, g_mbd12_z
+  };
+
+  ntp_vertex->Fill(vtx_row);
+
+  if(fabs(g_z)>10.){
+    if(Verbosity()>0){
+      std::cout << "|Zvtx|>10" << std::endl;
+    }
+    return Fun4AllReturnCodes::ABORTEVENT;
+  }
+
+  double Zvtx = g_z;
 
   // Loop over tracks and check for close DCA match with all other tracks
   for (auto tr1_it = m_svtxTrackMap->begin(); tr1_it != m_svtxTrackMap->end(); ++tr1_it)
@@ -413,6 +506,7 @@ int FastDecayReco::process_event(PHCompositeNode* topNode)
           bool ret1 = projectTrackToPoint(tr1, pca_rel1, projected_pos1, projected_mom1);
           bool ret2 = projectTrackToPoint(tr2, pca_rel2, projected_pos2, projected_mom2);
 
+
           if (!ret1 || !ret2)
           {
             continue;
@@ -422,6 +516,7 @@ int FastDecayReco::process_event(PHCompositeNode* topNode)
           double pair_dca_proj;
           Acts::Vector3 pca_rel1_proj;
           Acts::Vector3 pca_rel2_proj;
+
           findPcaTwoTracks(decaymassA, decaymassB, projected_pos1, projected_pos2, projected_mom1, projected_mom2, pca_rel1_proj, pca_rel2_proj, pair_dca_proj);
 
           // if(pair_dca_proj > pair_dca_cut) continue;
@@ -431,13 +526,20 @@ int FastDecayReco::process_event(PHCompositeNode* topNode)
           // invariant mass is calculated in this method
           fillHistogram(projected_mom1, projected_mom2, decaymassA, decaymassB, recomass, invariantMass, invariantPt, invariantPhi, rapidity, pseudorapidity);
 
-          if(crossing1==0 && crossing2==0){ // To do the track-calo matching
+          if (tr1->get_charge() == tr2->get_charge()) continue;
 
-            if (_photonconv && invariantMass >= 0.06) continue; // For the Photon Conversion option
-
-            fillNtp(tr1, tr2, decaymassA, decaymassB, dcaVals1, dcaVals2, pca_rel1, pca_rel2, pair_dca, invariantMass, invariantPt, invariantPhi, rapidity, pseudorapidity, projected_pos1, projected_pos2, projected_mom1, projected_mom2, pca_rel1_proj, pca_rel2_proj, pair_dca_proj, track1_silicon_cluster_size, track2_silicon_cluster_size, track1_mvtx_cluster_size, track1_mvtx_state_size, track1_intt_cluster_size, track1_intt_state_size, track2_mvtx_cluster_size, track2_mvtx_state_size, track2_intt_cluster_size, track2_intt_state_size, icomb, track1_cemc_phi, track1_cemc_eta, cemc_phi1, cemc_eta1, cemc_z1, cemc_ecore1, track2_cemc_phi, track2_cemc_eta, cemc_phi2, cemc_eta2, cemc_z2, cemc_ecore2, track1_ihcal_phi, track1_ihcal_eta, ihcal_phi1, ihcal_eta1, ihcal_e3x3_1, track2_ihcal_phi, track2_ihcal_eta, ihcal_phi2, ihcal_eta2, ihcal_e3x3_2, track1_ohcal_phi, track1_ohcal_eta, ohcal_phi1, ohcal_eta1, ohcal_e3x3_1, track2_ohcal_phi, track2_ohcal_eta, ohcal_phi2, ohcal_eta2, ohcal_e3x3_2, Zvtx, m_runNumber, m_evtNumber, isMB10, isMB12, isPhoton4, isPhoton5, isMBPhoton3, isMBPhoton4, isMBPhoton5);
-
+          if (_TrackCaloMatching) {
+            if (crossing1 != 0 || crossing2 != 0) continue;
           }
+
+          if (std::fabs(decaymassA - m_pion) < mass_tolerance && std::fabs(decaymassB - m_pion) < mass_tolerance) {
+            if (invariantMass < 0.35 || invariantMass > 0.65) continue;
+          }
+
+          if (_photonconv && invariantMass >= 0.06) continue; // For the Photon Conversion option
+
+          fillNtp(tr1, tr2, decaymassA, decaymassB, dcaVals1, dcaVals2, pca_rel1, pca_rel2, pair_dca, invariantMass, invariantPt, invariantPhi, rapidity, pseudorapidity, projected_pos1, projected_pos2, projected_mom1, projected_mom2, pca_rel1_proj, pca_rel2_proj, pair_dca_proj, track1_silicon_cluster_size, track2_silicon_cluster_size, track1_mvtx_cluster_size, track1_mvtx_state_size, track1_intt_cluster_size, track1_intt_state_size, track2_mvtx_cluster_size, track2_mvtx_state_size, track2_intt_cluster_size, track2_intt_state_size, icomb, track1_cemc_phi, track1_cemc_eta, cemc_phi1, cemc_eta1, cemc_z1, cemc_ecore1, track2_cemc_phi, track2_cemc_eta, cemc_phi2, cemc_eta2, cemc_z2, cemc_ecore2, track1_ihcal_phi, track1_ihcal_eta, ihcal_phi1, ihcal_eta1, ihcal_e3x3_1, track2_ihcal_phi, track2_ihcal_eta, ihcal_phi2, ihcal_eta2, ihcal_e3x3_2, track1_ohcal_phi, track1_ohcal_eta, ohcal_phi1, ohcal_eta1, ohcal_e3x3_1, track2_ohcal_phi, track2_ohcal_eta, ohcal_phi2, ohcal_eta2, ohcal_e3x3_2, Zvtx, m_runNumber, m_evtNumber, isMB10, isMB12, isPhoton4, isPhoton5, isMBPhoton3, isMBPhoton4, isMBPhoton5);
+
 
           if (Verbosity() > 1)
           {
@@ -551,8 +653,13 @@ void FastDecayReco::fillNtp(SvtxTrack* track1, SvtxTrack* track2, float decaymas
   double trackid2 = track2->get_id();
 
   // dEdx calculation
-  float calculated_dEdx1 = get_dEdx(track1);
-  float calculated_dEdx2 = get_dEdx(track2);
+  float calculated_dEdx1 = 0.;
+  float calculated_dEdx2 = 0.;
+
+  if(_MC){
+    calculated_dEdx1 = get_dEdx(track1);
+    calculated_dEdx2 = get_dEdx(track2);
+  }
 
   int PID1 = get_PID(decaymassA, track1->get_charge());
   int PID2 = get_PID(decaymassB, track2->get_charge());
@@ -751,7 +858,7 @@ RawCluster* FastDecayReco::MatchClusterCEMC(SvtxTrackState* trackstate, RawClust
   return returnCluster;
 }
 
-double FastDecayReco::Get_CAL_e3x3(SvtxTrackState* trackstate, TowerInfoContainerv4* _towersInfo, float& track_eta, float& track_phi, float& hcal_eta, float& hcal_phi, double Zvtx, int what)
+double FastDecayReco::Get_CAL_e3x3(SvtxTrackState* trackstate, TowerInfoContainerv2* _towersInfo, float& track_eta, float& track_phi, float& hcal_eta, float& hcal_phi, double Zvtx, int what)
 {
 
   const float eta_mapIH[] = {-1.05417,-0.9625,-0.870833,-0.779167,-0.6875,-0.595833,-0.504167,-0.4125,-0.320833,-0.229167,-0.1375,-0.0458333,0.0458333,0.1375,0.229167,0.320833,0.4125,0.504167,0.595833,0.6875,0.779167,0.870833,0.9625,1.05417};
@@ -1093,71 +1200,6 @@ Acts::Vector3 FastDecayReco::calculateDca(SvtxTrack* track, const Acts::Vector3&
   return outVals;
 }
 
-/*
-   float FastDecayReco::get_dEdx(SvtxTrack* track)
-   {
-
-   if(!m_cluster_map || !m_geom_container)
-   {
-   std::cout << "Can't continue in KFParticle_Tools::get_dEdx, returning -1" << std::endl;
-   return -1.0;
-   }
-
-   TrackSeed *tpcseed = track->get_tpc_seed();
-   std::vector<TrkrDefs::cluskey> clusterKeys;
-   clusterKeys.insert(clusterKeys.end(), tpcseed->begin_cluster_keys(), tpcseed->end_cluster_keys());
-   std::vector<float> dedxlist;
-   for (unsigned long cluster_key : clusterKeys)
-   {
-   unsigned int layer_local = TrkrDefs::getLayer(cluster_key);
-   if(TrkrDefs::getTrkrId(cluster_key) != TrkrDefs::TrkrId::tpcId)
-   {
-   continue;
-   }
-   TrkrCluster* cluster = m_cluster_map->findCluster(cluster_key);
-
-   float adc = cluster->getAdc();
-   PHG4TpcCylinderGeom* GeoLayer_local = m_geom_container->GetLayerCellGeom(layer_local);
-   float thick = GeoLayer_local->get_thickness();
-
-   float r = GeoLayer_local->get_radius();
-   float alpha = (r * r) / (2 * r * TMath::Abs(1.0 / tpcseed->get_qOverR()));
-   float beta = atan(tpcseed->get_slope());
-
-   float alphacorr = cos(alpha);
-   if(alphacorr<0||alphacorr>4)
-   {
-   alphacorr=4;
-   }
-
-   float betacorr = cos(beta);
-   if(betacorr<0||betacorr>4)
-   {
-   betacorr=4;
-   }
-
-   adc/=thick;
-   adc*=alphacorr;
-   adc*=betacorr;
-   dedxlist.push_back(adc);
-   sort(dedxlist.begin(), dedxlist.end());
-   }
-
-   int trunc_min = 0;
-   int trunc_max = (int)dedxlist.size()*0.7;
-   float sumdedx = 0;
-   int ndedx = 0;
-   for(int j = trunc_min; j<=trunc_max;j++)
-   {
-   sumdedx+=dedxlist.at(j);
-   ndedx++;
-   }
-
-   sumdedx/=ndedx;
-   return sumdedx;
-   }
-   */
-
 float FastDecayReco::get_dEdx(SvtxTrack* track)
 {
 
@@ -1321,21 +1363,19 @@ double FastDecayReco::get_dEdx_fitValue(float& qmomentum, int& PID)
 
 int FastDecayReco::InitRun(PHCompositeNode* topNode)
 {
-  std::cout << "L=1" << std::endl; 
   const char* cfilepath = filepath.c_str();
-  std::cout << "L=2" << std::endl;
   fout = new TFile(cfilepath, "recreate");
-  std::cout << "L=3" << std::endl;
   ntp_reco_info = new TNtuple("ntp_reco_info", "decay_pairs", "id1:crossing1:x1:y1:z1:px1:py1:pz1:decaymassA:dEdx1:matching1:dca3dxy1:dca3dz1:phi1:pca_rel1_x:pca_rel1_y:pca_rel1_z:eta1:charge1:tpcClusters_1:id2:crossing2:x2:y2:z2:px2:py2:pz2:decaymassB:dEdx2:matching2:dca3dxy2:dca3dz2:phi2:pca_rel2_x:pca_rel2_y:pca_rel2_z:eta2:charge2:tpcClusters_2:vertex_x:vertex_y:vertex_z:pair_dca:invariant_mass:invariant_pt:invariantPhi:pathlength_x:pathlength_y:pathlength_z:pathlength:rapidity:pseudorapidity:projected_pos1_x:projected_pos1_y:projected_pos1_z:projected_pos2_x:projected_pos2_y:projected_pos2_z:projected_mom1_x:projected_mom1_y:projected_mom1_z:projected_mom2_x:projected_mom2_y:projected_mom2_z:projected_pca_rel1_x:projected_pca_rel1_y:projected_pca_rel1_z:projected_pca_rel2_x:projected_pca_rel2_y:projected_pca_rel2_z:projected_pair_dca:projected_pathlength_x:projected_pathlength_y:projected_pathlength_z:projected_pathlength:quality1:quality2:cosThetaReco:track1_silicon_clusters:track2_silicon_clusters:track1_mvtx_clusters:track1_mvtx_states:track1_intt_clusters:track1_intt_states:track2_mvtx_clusters:track2_mvtx_states:track2_intt_clusters:track2_intt_states:icomb:proj_cemc_phi1:proj_cemc_eta1:cemc_phi1:cemc_eta1:cemc_z1:cemc_ecore1:proj_cemc_phi2:proj_cemc_eta2:cemc_phi2:cemc_eta2:cemc_z2:cemc_ecore2:proj_ihcal_phi1:proj_ihcal_eta1:ihcal_phi1:ihcal_eta1:ihcal_e3x3_1:proj_ihcal_phi2:proj_ihcal_eta2:ihcal_phi2:ihcal_eta2:ihcal_e3x3_2:proj_ohcal_phi1:proj_ohcal_eta1:ohcal_phi1:ohcal_eta1:ohcal_e3x3_1:proj_ohcal_phi2:proj_ohcal_eta2:ohcal_phi2:ohcal_eta2:ohcal_e3x3_2:Zvtx:runNumber:eventNumber:trackid1:trackid2:run:segment:mb10:mb12:photon4:photon5:mbphoton3:mbphoton4:mbphoton5");
-  std::cout << "L=4" << std::endl;
+
+
+  ntp_vertex = new TNtuple("ntp_vertex", "ntp_vertex", "svtx_xvtx:svtx_yvtx:svtx_zvtx:svtx_mbd12_xvtx:svtx_mbd12_yvtx:svtx_mbd12_zvtx:mbd_xvtx:mbd_yvtx:mbd_zvtx:mbd_mbd12_xvtx:mbd_mbd12_yvtx:mbd_mbd12_zvtx:g_xvtx:g_yvtx:g_zvtx:g_mbd12_xvtx:g_mbd12_yvtx:g_mbd12_zvtx");
+
   getNodes(topNode);
 
-  std::cout << "L=5" << std::endl;
   recomass = new TH1D("recomass", "recomass", 1000, 0.0, 1);  // root histogram arguments: name,title,bins,minvalx,maxvalx
 
   h_trigger = new TH1D("h_trigger","h_trigger", 41, -0.5, 40.5);
 
-  std::cout << "L=6" << std::endl;
   //Add new track map to save selected tracks
   if (m_save_tracks)
   {
@@ -1362,6 +1402,7 @@ int FastDecayReco::End(PHCompositeNode* /**topNode*/)
 {
   fout->cd();
   ntp_reco_info->Write();
+  ntp_vertex->Write();
   recomass->Write();
   h_trigger->Write();
   /*
@@ -1384,12 +1425,42 @@ int FastDecayReco::getNodes(PHCompositeNode* topNode)
     return Fun4AllReturnCodes::ABORTEVENT;
   }
 
+  // Svtx vertex map
   m_vertexMap = findNode::getClass<SvtxVertexMap>(topNode, "SvtxVertexMap");
   if (!m_vertexMap)
   {
-    std::cout << PHWHERE << "No vertexMap on node tree, exiting." << std::endl;
+    std::cout << PHWHERE << "No SvtxvertexMap on node tree, exiting." << std::endl;
     return Fun4AllReturnCodes::ABORTEVENT;
   }
+
+  // MBD vertex map
+  m_mbdvertexmap = findNode::getClass<MbdVertexMap>(topNode, "MbdVertexMap");
+  if (!m_mbdvertexmap)
+  {
+    std::cout << PHWHERE << "No MbdVertexMap on node tree, exiting." << std::endl;
+    return Fun4AllReturnCodes::ABORTEVENT;
+  }
+
+  // Global vertex map
+  m_global_vtxmap = findNode::getClass<GlobalVertexMapv1>(topNode, "GlobalVertexMap");
+  if(!m_global_vtxmap) {
+    std::cerr << PHWHERE << " ERROR: Can not find GlobalVertexMap node." << std::endl;
+    return Fun4AllReturnCodes::ABORTEVENT;
+  }
+
+  if(Verbosity()>0){
+    std::cout << "GlobalVertexMap size = " << m_global_vtxmap->size() << std::endl;
+  }
+
+  // MBD MC trigger
+  if(_MC){
+    mbdout = findNode::getClass<MbdOutV2>(topNode, "MbdOut");
+    if(!mbdout){
+      std::cerr << PHWHERE << " ERROR: Can not find MbdOut node." << std::endl;
+      return Fun4AllReturnCodes::ABORTEVENT;
+    }
+  }
+
 
   _tGeometry = findNode::getClass<ActsGeometry>(topNode, "ActsGeometry");
   if (!_tGeometry)
@@ -1398,22 +1469,16 @@ int FastDecayReco::getNodes(PHCompositeNode* topNode)
     return Fun4AllReturnCodes::ABORTEVENT;
   }
 
-  m_global_vtxmap = findNode::getClass<GlobalVertexMap>(topNode, "GlobalVertexMap");
-  if(!m_global_vtxmap) {
-    std::cerr << PHWHERE << " ERROR: Can not find GlobalVertexMap node." << std::endl;
-    return Fun4AllReturnCodes::ABORTEVENT;
-  }
-
-  m_cemc_clusters = findNode::getClass<RawClusterContainer>(topNode, "CLUSTERINFO_CEMC");
+  m_cemc_clusters = findNode::getClass<RawClusterContainer>(topNode, "CLUSTER_CEMC");
   if(!m_cemc_clusters) {
-    std::cerr << PHWHERE << " ERROR: Can not find CLUSTERINFO_CEMC node." << std::endl;
+    std::cerr << PHWHERE << " ERROR: Can not find CLUSTER_CEMC node." << std::endl;
     return Fun4AllReturnCodes::ABORTEVENT;
   }
   if(Verbosity() > 0){
     std::cout << " Number of CEMC clusters: " << m_cemc_clusters->size() << std::endl;
   }
 
-  m_ihcal_towers = findNode::getClass<TowerInfoContainerv4>(topNode, "TOWERINFO_CALIB_HCALIN");
+  m_ihcal_towers = findNode::getClass<TowerInfoContainerv2>(topNode, "TOWERINFO_CALIB_HCALIN");
   if(!m_ihcal_towers) {
     std::cerr << PHWHERE << " ERROR: Can not find TOWERINFO_CALIB_HCALIN node." << std::endl;
     return Fun4AllReturnCodes::ABORTEVENT;
@@ -1422,7 +1487,7 @@ int FastDecayReco::getNodes(PHCompositeNode* topNode)
     std::cout << " Number of HCALIN towers: " << m_ihcal_towers->size() << std::endl;
   }
 
-  m_ohcal_towers = findNode::getClass<TowerInfoContainerv4>(topNode, "TOWERINFO_CALIB_HCALOUT");
+  m_ohcal_towers = findNode::getClass<TowerInfoContainerv2>(topNode, "TOWERINFO_CALIB_HCALOUT");
   if(!m_ohcal_towers) {
     std::cerr << PHWHERE << " ERROR: Can not find TOWERINFO_CALIB_HCALIN node." << std::endl;
     return Fun4AllReturnCodes::ABORTEVENT;
@@ -1431,17 +1496,34 @@ int FastDecayReco::getNodes(PHCompositeNode* topNode)
     std::cout << " Number of HCALOUT towers: " << m_ohcal_towers->size() << std::endl;
   }
 
-  m_dst_trackmap = findNode::getClass<SvtxTrackMap>(topNode, m_trk_map_node_name.c_str());
+  /*
+     m_dst_trackmap = findNode::getClass<SvtxTrackMap>(topNode, m_trk_map_node_name.c_str());
+     if(!m_dst_trackmap){
+     std::cout << " m_dst_trackmap not called " << std::endl;
+     }
+     */
+
 
   m_cluster_map = findNode::getClass<TrkrClusterContainer>(topNode, "TRKR_CLUSTER");
+  if(!m_cluster_map){
+    std::cout << " m_cluster_map not called " << std::endl;
+  }
+
 
   m_geom_container = findNode::getClass<PHG4TpcGeomContainer>(topNode, "TPCGEOMCONTAINER");
-
-  gl1Packet = findNode::getClass<Gl1Packet>(topNode, "GL1RAWHIT");
-  if(!gl1Packet) {
-    std::cerr << PHWHERE << " ERROR: Can not find GL1RAWHIT node." << std::endl;
-    return Fun4AllReturnCodes::ABORTEVENT;
+  if(!m_geom_container){
+    std::cout << " m_geom_container not called " << std::endl;
   }
+
+
+  if(!_MC){
+    gl1Packet = findNode::getClass<Gl1Packet>(topNode, "GL1RAWHIT");
+    if(!gl1Packet) {
+      std::cerr << PHWHERE << " ERROR: Can not find GL1RAWHIT node." << std::endl;
+      return Fun4AllReturnCodes::ABORTEVENT;
+    }
+  }
+
 
   return Fun4AllReturnCodes::EVENT_OK;
 }
